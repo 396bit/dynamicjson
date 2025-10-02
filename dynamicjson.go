@@ -81,6 +81,8 @@ func typeName(t reflect.Type) string {
 		result.WriteString(typeName(t.Key()))
 		result.WriteRune(']')
 		result.WriteString(typeName(t.Elem()))
+	case reflect.Interface:
+		result.WriteString(typeName(t.Elem()))
 	default:
 		if p := t.PkgPath(); p != "" {
 			result.WriteString(p)

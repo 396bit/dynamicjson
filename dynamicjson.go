@@ -9,9 +9,13 @@ import (
 	"strings"
 )
 
+var unmarshaller = map[string]func(json.RawMessage, *Container) error{}
+var namedUnmarshaller = map[string]string{}
+var namedMarshaller = map[string]string{}
+
 // Register any type for unmarshalling.
 // Only registered types can be unmarshalled!
-func Register[T any]() {
+func Register[T any](names ...string) {
 	name := typeName(reflect.TypeFor[T]())
 	log.Printf("typedjson register %s", name)
 	unmarshaller[name] = func(data json.RawMessage, dest *Container) error {
@@ -21,6 +25,10 @@ func Register[T any]() {
 		}
 		dest.Value = dst
 		return nil
+	}
+	for _, n := range names {
+		namedMarshaller[name] = n
+		namedUnmarshaller[n] = name
 	}
 }
 
@@ -43,7 +51,15 @@ func (c *Container) UnmarshalJSON(bytes []byte) error {
 		return nil
 	case 1:
 		for k, v := range helper {
-			if unmarshal, found := unmarshaller[k]; found {
+			unmarshal, found := unmarshaller[k]
+			if !found {
+				var named string
+				named, found = namedUnmarshaller[k]
+				if found {
+					unmarshal, found = unmarshaller[named]
+				}
+			}
+			if found {
 				return unmarshal(v, c)
 			} else {
 				return fmt.Errorf("dont know how to unmarshal (not registered): %s", k)
@@ -59,16 +75,18 @@ func (c *Container) UnmarshalJSON(bytes []byte) error {
 func (c Container) MarshalJSON() ([]byte, error) {
 	t := reflect.TypeOf(c.Value)
 	if t != nil {
+		name := typeName(t)
+		if named, found := namedMarshaller[name]; found {
+			name = named
+		}
 		return json.Marshal(
 			map[string]any{
-				typeName(t): c.Value,
+				name: c.Value,
 			},
 		)
 	}
 	return json.Marshal(nil)
 }
-
-var unmarshaller = map[string]func(json.RawMessage, *Container) error{}
 
 func typeName(t reflect.Type) string {
 	result := strings.Builder{}
